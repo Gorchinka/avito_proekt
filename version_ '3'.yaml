@@ -1,0 +1,14 @@
+version: '3'
+services:
+  app:
+    build:.
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+    environment:
+      - PREFIX_LENGTH=24
+      - RATE_LIMIT=100
+      - TIMEOUT=120
+  redis:
+    image: redis:alpine

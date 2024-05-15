@@ -1,0 +1,5 @@
+import requests
+
+for i in range(101):
+    response = requests.get('http://localhost:5000/')
+    print(response.status_code)

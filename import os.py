@@ -1,0 +1,52 @@
+import os
+import ipaddress
+import redis
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+# Redis connection
+redis_client = redis.Redis(host='redis', port=6379, db=0)
+
+# Configurable variables
+PREFIX_LENGTH = int(os.environ.get('PREFIX_LENGTH', 24))
+RATE_LIMIT = int(os.environ.get('RATE_LIMIT', 100))
+TIMEOUT = int(os.environ.get('TIMEOUT', 120))  # 2 minutes
+
+def get_ip_address():
+    """Get IP address from X-Forwarded-For header"""
+    return request.headers.get('X-Forwarded-For', '').split(',')[0].strip()
+
+def get_prefix(ip_address):
+    """Get IP prefix from IP address"""
+    return ipaddress.ip_network(f"{ip_address}/{PREFIX_LENGTH}", strict=False)
+
+def increment_counter(prefix):
+    """Increment counter for the given prefix"""
+    redis_client.incr(f"rate_limit:{prefix}")
+    redis_client.expire(f"rate_limit:{prefix}", TIMEOUT)
+
+def check_rate_limit(prefix):
+    """Check if rate limit is exceeded for the given prefix"""
+    counter = redis_client.get(f"rate_limit:{prefix}")
+    if counter and int(counter) >= RATE_LIMIT:
+        return True
+    return False
+
+@app.route('/', methods=['GET'])
+def index():
+    ip_address = get_ip_address()
+    prefix = get_prefix(ip_address)
+    if check_rate_limit(prefix):
+        return jsonify({'error': 'Rate limit exceeded'}), 429
+    increment_counter(prefix)
+    return 'Static content'
+
+@app.route('/reset/<prefix>', methods=['POST'])
+def reset_rate_limit(prefix):
+    """Reset rate limit for the given prefix"""
+    redis_client.delete(f"rate_limit:{prefix}")
+    return 'Rate limit reset'
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
